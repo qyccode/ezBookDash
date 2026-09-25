@@ -1,0 +1,7 @@
+# Runtime data and caches are local-only. Keep only the directory guards.
+/cache/*
+!/cache/.htaccess
+/data/*
+!/data/.htaccess
+/runtime/*
+!/runtime/.htaccess

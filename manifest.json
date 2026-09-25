@@ -1,0 +1,16 @@
+{
+  "name": "ezBookDash · ezBookkeeping 记账看板",
+  "short_name": "ezBookDash",
+  "description": "ezBookkeeping 记账数据统计看板：收支趋势、资产走势、消费日历与财务健康度",
+  "start_url": "./index.php",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#3f66f8",
+  "background_color": "#f5f7fc",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
