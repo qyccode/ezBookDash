@@ -11,8 +11,6 @@
 
 ## 界面预览
 
-以下为各页面的截图占位图。
-
 | 页面 | 电脑端 | 移动端 |
 | --- | --- | --- |
 | 首页 | <img src="https://i.ibb.co/tMYhsVwx/01-desktop.png" width="360" alt="首页电脑端"> | <img src="https://i.ibb.co/gbYrMXVv/01-mobile.png" width="195" alt="首页移动端"> |
