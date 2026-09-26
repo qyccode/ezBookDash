@@ -11,16 +11,16 @@
 
 ## 界面预览
 
-以下为各页面的截图占位图。发布到 GitHub 后，可直接将对应图片地址替换为实际截图。
+以下为各页面的截图占位图。
 
-| 页面 | 电脑端（1440px） | 移动端（390px） |
+| 页面 | 电脑端 | 移动端 |
 | --- | --- | --- |
-| 首页 | <img src="https://iph.href.lu/1440x2018?text=首页-PC" width="360" alt="首页电脑端占位图"> | <img src="https://iph.href.lu/390x2704?text=首页-Mobile" width="195" alt="首页移动端占位图"> |
-| 流水 | <img src="https://iph.href.lu/1440x3673?text=流水-PC" width="360" alt="流水电脑端占位图"> | <img src="https://iph.href.lu/390x3727?text=流水-Mobile" width="195" alt="流水移动端占位图"> |
-| 统计 | <img src="https://iph.href.lu/1440x1415?text=统计-PC" width="360" alt="统计电脑端占位图"> | <img src="https://iph.href.lu/390x2547?text=统计-Mobile" width="195" alt="统计移动端占位图"> |
-| 资产 | <img src="https://iph.href.lu/1440x1482?text=资产-PC" width="360" alt="资产电脑端占位图"> | <img src="https://iph.href.lu/390x1877?text=资产-Mobile" width="195" alt="资产移动端占位图"> |
-| 记账弹层 | <img src="https://iph.href.lu/1440x900?text=记账弹层-PC" width="360" alt="记账弹层电脑端占位图"> | <img src="https://iph.href.lu/390x844?text=记账弹层-Mobile" width="195" alt="记账弹层移动端占位图"> |
-| 设置 | <img src="https://iph.href.lu/1440x900?text=设置-PC" width="360" alt="设置电脑端占位图"> | <img src="https://iph.href.lu/390x844?text=设置-Mobile" width="195" alt="设置移动端占位图"> |
+| 首页 | <img src="https://i.ibb.co/tMYhsVwx/01-desktop.png" width="360" alt="首页电脑端"> | <img src="https://i.ibb.co/gbYrMXVv/01-mobile.png" width="195" alt="首页移动端"> |
+| 流水 | <img src="https://i.ibb.co/4wgQhqxW/02-desktop.png" width="360" alt="流水电脑端"> | <img src="https://i.ibb.co/js7xHBc/02-mobile.png" width="195" alt="流水移动端"> |
+| 统计 | <img src="https://i.ibb.co/cHQfc6C/03-desktop.png" width="360" alt="统计电脑端"> | <img src="https://i.ibb.co/ymhZSRZ7/03-mobile.png" width="195" alt="统计移动端"> |
+| 资产 | <img src="https://i.ibb.co/wGnFJsz/04-desktop.png" width="360" alt="资产电脑端"> | <img src="https://i.ibb.co/0yW7mVxx/04-mobile.png" width="195" alt="资产移动端"> |
+| 记账弹层 | <img src="https://i.ibb.co/hFBTwRY3/05-desktop.png" width="360" alt="记账弹层电脑端"> | <img src="https://i.ibb.co/gbfBG3St/05-mobile.png" width="195" alt="记账弹层移动端"> |
+| 设置 | <img src="https://i.ibb.co/WN9sPD8n/06-desktop.png" width="360" alt="设置电脑端"> | <img src="https://i.ibb.co/0pwBBdMM/06-mobile.png" width="195" alt="设置移动端"> |
 
 ## PHP 部署
 
