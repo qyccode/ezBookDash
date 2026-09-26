@@ -9,6 +9,19 @@
 - 可访问 ezBookKeeping 服务
 - Web 服务建议使用 HTTPS；仅可信内网测试可使用 HTTP
 
+## 界面预览
+
+以下为各页面的截图占位图。发布到 GitHub 后，可直接将对应图片地址替换为实际截图。
+
+| 页面 | 电脑端（1440px） | 移动端（390px） |
+| --- | --- | --- |
+| 首页 | <img src="https://iph.href.lu/1440x2018?text=首页-PC" width="360" alt="首页电脑端占位图"> | <img src="https://iph.href.lu/390x2704?text=首页-Mobile" width="195" alt="首页移动端占位图"> |
+| 流水 | <img src="https://iph.href.lu/1440x3673?text=流水-PC" width="360" alt="流水电脑端占位图"> | <img src="https://iph.href.lu/390x3727?text=流水-Mobile" width="195" alt="流水移动端占位图"> |
+| 统计 | <img src="https://iph.href.lu/1440x1415?text=统计-PC" width="360" alt="统计电脑端占位图"> | <img src="https://iph.href.lu/390x2547?text=统计-Mobile" width="195" alt="统计移动端占位图"> |
+| 资产 | <img src="https://iph.href.lu/1440x1482?text=资产-PC" width="360" alt="资产电脑端占位图"> | <img src="https://iph.href.lu/390x1877?text=资产-Mobile" width="195" alt="资产移动端占位图"> |
+| 记账弹层 | <img src="https://iph.href.lu/1440x900?text=记账弹层-PC" width="360" alt="记账弹层电脑端占位图"> | <img src="https://iph.href.lu/390x844?text=记账弹层-Mobile" width="195" alt="记账弹层移动端占位图"> |
+| 设置 | <img src="https://iph.href.lu/1440x900?text=设置-PC" width="360" alt="设置电脑端占位图"> | <img src="https://iph.href.lu/390x844?text=设置-Mobile" width="195" alt="设置移动端占位图"> |
+
 ## PHP 部署
 
 1. 将本目录中的程序文件上传到 PHP 网站目录。
@@ -16,14 +29,6 @@
 
 ```php
 'base_url' => 'https://ezbookkeeping.example.com',
-```
-
-也可以通过环境变量配置：
-
-```text
-EBK_BASE_URL=https://ezbookkeeping.example.com
-EBK_TIMEZONE=Asia/Shanghai
-EBK_STORAGE_DIR=/var/lib/ezbookdash
 ```
 
 3. 确保 `runtime/`（或 `EBK_STORAGE_DIR` 指向的目录）对 PHP 进程可读写。
@@ -34,11 +39,21 @@ location ~ ^/(cache|data|runtime)/ { deny all; }
 location ~ ^/(config|bootstrap)\.php$ { deny all; }
 ```
 
-公开版默认不会连接任何 ezBookKeeping 地址。未填写地址时，登录页会提示先配置 `EBK_BASE_URL` 或 `config.php`。
+首次打开时，请先填写你自己的 ezBookKeeping 地址，再使用账号登录。
+
+## 更新流程
+
+适用于 PHP 部署。更新前先备份私有数据，再替换程序文件：
+
+1. 备份 `runtime/`（如果设置了 `EBK_STORAGE_DIR`，备份该目录）以及当前的 `config.php`。
+2. 从 GitHub 下载新版本文件，将新版本程序文件上传并覆盖旧版本。
+3. 保留现有的 `config.php` 和 `runtime/`（或 `EBK_STORAGE_DIR` 指向的目录），不要用公开仓库中的空配置或示例数据覆盖它们。
+4. 确认 PHP 进程对运行数据目录具有读写权限，然后重新打开网站。
+5. 登录后检查首页、流水、统计、资产、预算和设置；确认正常后再删除旧备份。
+
+更新只替换程序代码，账本数据仍保存在 ezBookKeeping 中，预算、AI 配置和分类映射保存在运行数据目录中。
 
 ## Docker 部署
-
-无需下载 Docker 源码，直接使用 Docker Hub 镜像 `qyccode/ezbookdash:latest`：
 
 ```bash
 docker run -d \
@@ -70,14 +85,14 @@ volumes:
   ezbookdash-runtime:
 ```
 
-将 `EBK_BASE_URL` 改成你的 ezBookKeeping 地址。公开版默认地址为空，不会自动连接官方演示站。
+将 `EBK_BASE_URL` 改成你的 ezBookKeeping 地址。没有填写时，登录页会提示你完成配置。
 
 ## 数据与安全
 
 - `runtime/` 保存缓存、Session、预算和 AI 配置，必须持久化挂载，不能使用临时容器目录。
 - 不要将 API Token、密码或 AI Key 写入公开仓库。
 - 生产环境保持 HTTPS 和 `ssl_verify` 开启。
-- `config.php`、`bootstrap.php`、`cache/`、`data/`、`runtime/` 不应通过 Web 直接访问。
+- `config.php`、`bootstrap.php` 和 `runtime/` 不应通过 Web 直接访问；如果服务器上还保留旧版根目录 `cache/`、`data/`，也应继续禁止访问。
 
 ## Docker 镜像
 

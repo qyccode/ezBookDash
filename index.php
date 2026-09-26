@@ -227,12 +227,13 @@ html[data-theme="dark"] .tabbar button.on{color:#9db8ff}
 .home-month .cal-nav{margin-left:auto;background:var(--bg-soft);border:1px solid var(--card-border);border-radius:11px;padding:3px}
 .home-month .cal-navbtn{width:30px;height:30px;font-size:16px}
 .home-month .cal-ymbtn{font-size:13.5px;padding:5px 10px}
-/* 首页两列：桌面「流水(宽) + 日历(窄)」，移动端纵向（日历在上） */
-.home-grid{display:grid;gap:14px;grid-template-areas:"cal" "tx";margin-bottom:16px}
-.home-cal{grid-area:cal}
+/* 首页布局：桌面「流水(宽) + 日历/预算(窄)」，移动端纵向（日历、预算在流水前）。
+   右侧栏单独纵向排列，避免左侧流水展开时影响预算的位置。 */
+.home-grid{display:grid;gap:14px;grid-template-areas:"side" "tx";margin-bottom:16px}
+.home-side{grid-area:side;display:flex;flex-direction:column;gap:14px;min-width:0}
 .home-tx{grid-area:tx}
 @media (min-width:721px){
-  .home-grid{grid-template-columns:minmax(0,1fr) 400px;grid-template-areas:"tx cal";align-items:start}
+  .home-grid{grid-template-columns:minmax(0,1fr) 400px;grid-template-areas:"tx side";align-items:start}
 }
 /* ---------- 按日分组流水：日期条 + 可折叠明细 ----------
    设计：日期条=导航层（永远可见，一眼看全月节奏）；明细=按需层（点开才画）。
@@ -419,7 +420,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
    与 KPI/健康度同一「内嵌浅底」语言。进度条颜色走 level 四档
    （none 中性蓝 / warn 橙 / danger 红 / over 深红）—— 这是**警示语义**，
    与股票涨跌色无关，不受「涨红跌绿」约定约束。 */
-.bud-card{margin-bottom:16px}
+.bud-card{margin-bottom:0}
 .bud-list{display:flex;flex-direction:column;gap:11px}
 .bud-it{background:var(--bg-soft);border-radius:12px;padding:11px 14px 12px;min-width:0}
 .bud-top{display:flex;align-items:baseline;gap:8px;margin-bottom:8px}
@@ -705,7 +706,7 @@ html[data-theme="dark"] #calGrid[data-t="income"]~.cal-foot .cal-lg i[data-l="3"
 .empty{display:flex;align-items:center;justify-content:center;height:100%;min-height:120px;color:var(--text-dim);font-size:13px}
 footer{text-align:center;font-size:12px;color:var(--text-dim);margin-top:26px;line-height:1.9}
 /* ---------- 一句话记账：FAB + 弹层 + 确认卡 ---------- */
-.toast{position:fixed;left:50%;top:calc(18px + env(safe-area-inset-top));transform:translate(-50%,0);z-index:120;background:var(--card);border:1px solid var(--card-border);color:var(--text);font-size:13px;font-weight:600;padding:10px 18px;border-radius:999px;box-shadow:0 8px 24px rgba(20,35,80,.18);animation:toastIn .3s ease both}
+.toast{position:fixed;left:50%;top:calc(18px + env(safe-area-inset-top));transform:translate(-50%,0);z-index:200;background:var(--card);border:1px solid var(--card-border);color:var(--text);font-size:13px;font-weight:600;padding:10px 18px;border-radius:999px;box-shadow:0 8px 24px rgba(20,35,80,.18);animation:toastIn .3s ease both}
 @keyframes toastIn{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
 .fab{position:fixed;right:16px;bottom:calc(96px + env(safe-area-inset-bottom));z-index:75;min-width:54px;height:54px;padding:0 18px;border:0;border-radius:27px;background:var(--accent);display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;box-shadow:0 10px 26px rgba(63,102,248,.32);transition:transform .2s;font-family:inherit;color:#fff;font-size:14px;font-weight:700}
 .fab:active{transform:scale(.92)}
@@ -826,6 +827,9 @@ html[data-theme="dark"] .sheet-loading{background:rgba(15,22,45,.82)}
 .sheet-loading .t{font-size:12.5px;color:var(--text-sub);font-weight:500}
 .add-err{color:var(--rose);font-size:12.5px;margin:0 0 8px}
 .add-err[hidden]{display:none}
+.ai-account-hint{font-size:12px;line-height:1.5;margin:0 0 8px;padding:7px 9px;border-radius:8px;color:var(--orange);background:rgba(242,128,58,.1);border:1px solid rgba(242,128,58,.25)}
+.ai-account-hint[data-tone="ok"]{color:var(--green);background:rgba(24,167,104,.1);border-color:rgba(24,167,104,.25)}
+.ai-account-hint[hidden]{display:none}
 /* 编辑模式：删除+保存并排 */
 .add-btns{display:flex;gap:10px}
 .add-del{flex:none;width:64px;border:1px solid rgba(239,77,110,.4);background:rgba(239,77,110,.08);color:var(--rose);font-size:13.5px;font-weight:600;border-radius:12px;cursor:pointer;font-family:inherit;transition:.18s}
@@ -1176,12 +1180,13 @@ html[data-theme="dark"] .sheet-loading{background:rgba(15,22,45,.82)}
       <div class="kpis" id="kpis"></div>
       <div class="home-grid">
         <div class="card home-tx"><div class="head"><h3>当月流水</h3><span class="hint" id="dayTxHint"></span></div><div id="dayTxWrap"></div></div>
-        <div class="card home-cal"><div class="head"><h3>消费日历</h3><div class="headtools"><div class="miniseg" id="calSeg"><button data-t="expense" class="on">支出</button><button data-t="income">收入</button></div></div></div><div class="cal-grid" id="calGrid"></div><div class="cal-foot"><span class="cal-lg">少<i data-l="1"></i><i data-l="2"></i><i data-l="3"></i><i data-l="4"></i>多</span><span class="cal-peak" id="calPeak"></span></div></div>
-      </div>
-      <!-- 预算放在高频流水之后：先完成查账/记账，再处理月度规划。 -->
-      <div class="card bud-card" id="budCard">
-        <div class="head"><h3>月度预算</h3><span class="hint" id="budHint"></span><div class="headtools"><button class="minibtn" id="budEditBtn">编辑</button></div></div>
-        <div id="budBody"><div class="bud-loading">正在读取预算…</div></div>
+        <div class="home-side">
+          <div class="card home-cal"><div class="head"><h3>消费日历</h3><div class="headtools"><div class="miniseg" id="calSeg"><button data-t="expense" class="on">支出</button><button data-t="income">收入</button></div></div></div><div class="cal-grid" id="calGrid"></div><div class="cal-foot"><span class="cal-lg">少<i data-l="1"></i><i data-l="2"></i><i data-l="3"></i><i data-l="4"></i>多</span><span class="cal-peak" id="calPeak"></span></div></div>
+          <div class="card bud-card" id="budCard">
+          <div class="head"><h3>月度预算</h3><span class="hint" id="budHint"></span><div class="headtools"><button class="minibtn" id="budEditBtn">编辑</button></div></div>
+          <div id="budBody"><div class="bud-loading">正在读取预算…</div></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1367,6 +1372,7 @@ html[data-theme="dark"] .sheet-loading{background:rgba(15,22,45,.82)}
             <label id="tagWrap">标签<input id="aiTagTxt" class="pk-input" readonly placeholder="点击选择标签"></label>
           </div>
         </div>
+        <div class="ai-account-hint" id="aiAccountHint" hidden></div>
         <div class="add-err" id="addErr" hidden></div>
         <div class="add-btns">
           <button class="add-del" id="aiDel" hidden>删除</button>
@@ -1525,6 +1531,21 @@ html[data-theme="dark"] .sheet-loading{background:rgba(15,22,45,.82)}
       <div class="set-group">
         <div class="set-row">
           <div class="sr-txt">
+            <div class="sr-name">导出设置</div>
+            <div class="sr-desc">导出主题、AI 配置、分类映射和预算，不含密钥</div>
+          </div>
+          <button class="set-btn" id="setExport">导出</button>
+        </div>
+        <div class="set-row">
+          <div class="sr-txt">
+            <div class="sr-name">导入设置</div>
+            <div class="sr-desc">从设置备份恢复，可迁移到其他设备</div>
+          </div>
+          <button class="set-btn" id="setImport">导入</button>
+          <input type="file" id="setImportFile" accept=".json,application/json" hidden>
+        </div>
+        <div class="set-row">
+          <div class="sr-txt">
             <div class="sr-name">清除缓存</div>
             <div class="sr-desc">清理本地离线缓存与服务端数据缓存，不会退出登录</div>
           </div>
@@ -1677,6 +1698,50 @@ function openSettings(){
 }
 function closeSettings(){ document.getElementById("setMask").hidden = true; }
 
+/* 设置备份：只导出非敏感配置，登录 Token、密码和 AI API Key 永不进入文件。 */
+function settingsDownload(data){
+  const pkg={...data,theme:{mode:state.themeMode,netHidden:state.netHidden,customFrom:state.customFrom||"",customTo:state.customTo||""}};
+  const stamp=new Date().toISOString().slice(0,19).replace(/[T:]/g,"-");
+  const blob=new Blob([JSON.stringify(pkg,null,2)],{type:"application/json;charset=utf-8"});
+  const url=URL.createObjectURL(blob), a=document.createElement("a");
+  a.href=url; a.download=`ezbookdash-settings-${stamp}.json`; a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+document.getElementById("setExport").onclick=async()=>{
+  const btn=document.getElementById("setExport"); btn.disabled=true; btn.textContent="导出中…";
+  try{
+    const r=await apiFetch("api.php?action=settings_export",{cache:"no-store"}), j=await r.json();
+    if(j.requireLogin){setView(false);throw new Error("登录已失效，请重新登录");}
+    if(!j.success) throw new Error(j.error||"导出失败");
+    settingsDownload(j.data); toast("设置已导出（不含密钥）");
+  }catch(e){toast(e.message||"导出失败");}
+  finally{btn.disabled=false;btn.textContent="导出";}
+};
+function settingsImportSummary(pkg){
+  const ai=pkg.ai?1:0, map=pkg.categoryMapping&&typeof pkg.categoryMapping==="object"?Object.keys(pkg.categoryMapping).length:0;
+  const budget=pkg.budget?.monthly&&typeof pkg.budget.monthly==="object"?Object.keys(pkg.budget.monthly).length:0;
+  return `将导入：AI 配置 ${ai?"1 项":"未包含"}、分类映射 ${map} 条、预算 ${budget} 条。\n\n现有分类映射和预算将按备份内容覆盖；目标设备已有的 AI API Key 会保留，备份文件不包含密钥。`;
+}
+document.getElementById("setImport").onclick=()=>document.getElementById("setImportFile").click();
+document.getElementById("setImportFile").addEventListener("change",async e=>{
+  const file=e.target.files?.[0]; e.target.value=""; if(!file) return;
+  try{
+    const pkg=JSON.parse(await file.text());
+    if(!pkg||pkg.format!=="ezbookdash-settings"||Number(pkg.version)!==1) throw new Error("不是有效的 ezBookDash 设置备份文件");
+    const ok=await miniConfirm("导入设置",settingsImportSummary(pkg),"导入",true); if(!ok) return;
+    const r=await apiFetch("api.php?action=settings_import",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(pkg)}), j=await r.json();
+    if(j.requireLogin){setView(false);throw new Error("登录已失效，请重新登录");}
+    if(!j.success) throw new Error(j.error||"导入失败");
+    const t=pkg.theme||{};
+    if(["auto","light","dark"].includes(t.mode)){state.themeMode=t.mode;localStorage.setItem("ebk_theme",t.mode);}
+    if(typeof t.netHidden==="boolean"){state.netHidden=t.netHidden;localStorage.setItem("ebk_net_hidden",t.netHidden?"1":"0");}
+    if(typeof t.customFrom==="string"){state.customFrom=t.customFrom;localStorage.setItem("ebk_custom_from",t.customFrom);}
+    if(typeof t.customTo==="string"){state.customTo=t.customTo;localStorage.setItem("ebk_custom_to",t.customTo);}
+    applyTheme(); state.budget=null; await loadAiSettings();
+    closeSettings(); toast("设置已导入，AI API Key 未随备份导入");
+  }catch(err){toast(err.message||"导入失败");}
+});
+
 /* ---- AI 识别设置：读取 / 保存 / 测试连接（配置存服务端 data/llm_config.php，属用户数据、不随清缓存消失） ---- */
 let aiKeyCleared = false;      /* 用户点了「清除 Key」→ 保存时明确清空 */
 
@@ -1730,15 +1795,22 @@ function aiRenderMap(ms){
   aiLastMapStats = ms || null;
   el.removeAttribute("data-tone");
   if(!ms){ el.textContent = "先在记账页打开一次，才能对出命中情况"; return; }
-  const cus = ms.custom ? "，已自定义 " + ms.custom + " 条" : "";
   if(!ms.total){ el.textContent = "没读到分类，先在记账页打开一次"; return; }
-  if(ms.hit >= ms.total){
-    el.textContent = "已命中 " + ms.hit + "/" + ms.total + "，全部配上触发词（映射表 " + ms.mapSize + " 条" + cus + "）";
+  const configured = Number.isFinite(+ms.configured) ? +ms.configured : (ms.mapSize ? ms.hit : 0);
+  const missing = Array.isArray(ms.unconfigured) ? ms.unconfigured : (ms.miss || []);
+  const missingN = Number.isFinite(+ms.unconfiguredN) ? +ms.unconfiguredN : missing.length;
+  if(configured >= ms.total){
+    el.textContent = "已配置 " + configured + "/" + ms.total + "，全部分类都有触发词（映射表 " + ms.mapSize + " 条）";
     el.setAttribute("data-tone", "ok");
     return;
   }
-  const names = ms.miss.join("、") + (ms.missN > ms.miss.length ? " 等 " + ms.missN + " 个" : "");
-  el.textContent = "已命中 " + ms.hit + "/" + ms.total + "，未匹配：" + names + cus;
+  if(configured === 0){
+    el.textContent = "尚未配置分类触发词（0/" + ms.total + "）";
+    el.setAttribute("data-tone", "warn");
+    return;
+  }
+  const names = missing.slice(0,4).join("、") + (missingN > missing.length ? " 等 " + missingN + " 个" : "");
+  el.textContent = "已配置 " + configured + "/" + ms.total + "，未配置：" + names;
   el.setAttribute("data-tone", "warn");
 }
 async function loadAiSettings(){
@@ -1835,7 +1907,7 @@ document.getElementById("setAiKeyClear").onclick = () => {
 };
 
 /* ---- 分类映射编辑窗口：分类固定（不可增删改），只改触发词 ----
-   改动以「与内置基线的差异」落盘（data/llm_category_map_user.php，属用户数据、不随清缓存消失），升级内置表也不会被旧覆盖挡住。 */
+   改动直接保存到 data/llm_category_map.php，分类映射只有一份，便于备份和迁移。 */
 const MP_TYPE_NAME = { 1:"收入", 2:"支出", 3:"转账" };
 const MP_TIP = "分类由账本固定，只能改触发词。触发词会随请求一起给模型，帮它判断「这句话属于哪个分类」。";
 let mpItems  = [];         /* 服务端全量条目，只在重新读取时才换 */
@@ -1870,7 +1942,6 @@ function mpHeadHtml(it){
   const rev  = mpNorm(cur) !== mpNorm(it.base);
   let h = '<span class="mp-sub">' + mpEsc(it.sub) + '</span>';
   if(pend) h += '<span class="mp-tag pend">未保存</span>';
-  if(it.custom) h += '<span class="mp-tag mod">已自定义</span>';
   /* 只标「账本无」这个例外：真实账本里绝大多数都是「有」，全标出来只是噪声 */
   if(it.matched === false) h += '<span class="mp-tag idle">账本无</span>';
   if(rev) h += '<button type="button" class="mp-rev" data-rev="' + mpEsc(key) + '">还原</button>';
@@ -1906,11 +1977,9 @@ function mpSyncRow(key){
 }
 function mpSyncFoot(){
   const pend = mpPendingN(), rev = mpRevertN();
-  const cus  = mpItems.filter(it=>it.custom).length;
   const absent = mpItems.filter(it=>it.matched === false).length;
   const cnt  = document.getElementById("mapCount");
   const parts = ["共 " + mpItems.length + " 条"];
-  if(cus) parts.push("已自定义 " + cus + " 条");
   if(mpMetaOk === false) parts.push("没读到你的账本分类，命中情况暂不可知");
   else if(absent) parts.push(absent + " 条账本里没有");
   if(pend) parts.push(pend + " 处未保存");
@@ -1999,9 +2068,8 @@ async function saveMapEditor(){
     if(!j.success) throw new Error(j.error || "保存失败");
     const d = j.data || {};
     toast("映射表已保存" + (d.changed ? "（" + d.changed + " 条改动）" : ""));
-    /* 就地把设置窗口那行说明里的「已自定义 N 条」刷新掉，省掉一次往返请求 */
-    if(aiLastMapStats){ aiLastMapStats.custom = d.customN || 0; aiRenderMap(aiLastMapStats); }
-    await mpLoad(false);          /* 重新拉一份：trig/base/custom 都换了基准，不重拉会一直显示「未保存」 */
+    await mpLoad(false);          /* 重新拉一份当前主映射，避免继续显示「未保存」 */
+    await loadAiSettings();
   }catch(e){
     toast(e.message || "保存失败");
   }finally{
@@ -3378,9 +3446,9 @@ const SK_CAT={1:["流动资金","#3f66f8"],2:["流动资金","#3f66f8"],4:["流�
 
 function renderSankey(d,tooltip,C){
   const el=document.getElementById("sankeyChart"); if(!el) return;
-  /* 移动端竖屏（<560px）内嵌视图只画大类（负债+净资产→总资产→四大类），账户明细留给全屏弹窗；
-     桌面/宽屏仍为完整账户级视图 */
-  const catsOnly=(el.clientWidth||400)<560;
+  /* 用视口宽度判断设备，不用图表容器宽度：资产页隐藏时容器宽度是 0，
+     从其他页面进入资产页会被误判成移动端简版。桌面端始终显示账户明细。 */
+  const catsOnly=(window.innerWidth||document.documentElement.clientWidth||560)<560;
   renderSankeyCore(d,tooltip,C,state.charts.sankeyChart,el,true,catsOnly);
 }
 
@@ -3407,7 +3475,7 @@ function renderSankeyCore(d,tooltip,C,chart,el,collapse,catsOnly){
     return;
   }
 
-  const narrow=(el.clientWidth||400)<560;   /* 视觉紧凑：窄容器用小字号/小留白/标签不带金额（弹窗竖屏同样适用） */
+  const narrow=(window.innerWidth||document.documentElement.clientWidth||560)<560;   /* 移动端视觉紧凑；桌面端始终使用详细布局 */
   const compact=narrow;
   const doCollapse=collapse&&compact;       /* 节点收敛：仅画布内嵌视图（弹窗显示全部节点，只借用紧凑视觉） */
 
@@ -3555,12 +3623,26 @@ function txParts(t,o){
   const label=type===1?TYPE_LABEL[1]:esc(t.category);
   const memo=t.comment||"";
   const acct=type===4?`${esc(t.account)} → ${esc(t.destAccount||"")}`:esc(t.account);
-  const pill=t.parent?`<span class="pill" style="color:${t.parentColor||"var(--text-sub)"};background:${t.parentColor?t.parentColor+"1f":"var(--bg-soft)"}">${esc(t.parent)}</span>`:"";
+  const parent=txParentInfo(t);
+  const pill=parent.name?`<span class="pill" style="color:${parent.color||"var(--text-sub)"};background:${parent.color?parent.color+"1f":"var(--bg-soft)"}">${esc(parent.name)}</span>`:"";
   const dt=new Date(t.time*1000);
   const hm=String(dt.getHours()).padStart(2,"0")+":"+String(dt.getMinutes()).padStart(2,"0");
   const timeStr=o.timeFmt==="hm"?hm:fmtDate(t.time);
   const amtStr=`<span class="amt ${cls}">${sign}${moneyOf(Math.abs(t.amount),t.currency)}</span>`;
   return {cls,sign,color,label,memo,acct,pill,timeStr,amtStr};
+}
+/* 转账分类也有自己的分类树。兼容旧缓存中后端固定返回「转账」的记录，
+   按 categoryId 从前端 transfer 分组补回真实大类名称和颜色。 */
+function txParentInfo(t){
+  const fallback={name:String(t.parent||""),color:String(t.parentColor||"")};
+  if(+t.type!==4) return fallback;
+  const sid=String(t.categoryId||"");
+  const groups=state.meta?.catGroups?.transfer||[];
+  if(sid){
+    const group=groups.find(g=>(g.items||[]).some(c=>String(c.id)===sid));
+    if(group) return {name:String(group.gname||fallback.name),color:String(group.gcolor||fallback.color)};
+  }
+  return fallback;
 }
 /* ============ 方向箭头图标（统一入口）============
    全站的方向指示一律用这套 SVG，**不要再用 ‹ › ▸ ▾ 之类字符**：
@@ -4062,6 +4144,7 @@ function openAddSheet(){
   g("aiDel").hidden=true;
   g("aiText").value="";
   const err=g("addErr"); err.hidden=true;
+  const accountHint=g("aiAccountHint"); if(accountHint){ accountHint.hidden=true; accountHint.textContent=""; accountHint.removeAttribute("data-tone"); }
   prepareEntryForm();
   ["aiCatTxt","aiAcctTxt","aiDstTxt","aiTagTxt","aiMemo","aiAmt","aiTime"].forEach(id=>{ const e=g(id); if(e){ e.value=""; delete e.dataset.userEdited; } });   // 重置值+标记（防上一次编辑残留）
   /* 默认确认卡常驻：手填底板（分类「外出就餐」/账户「招商银行卡」/金额空/时间当前） */
@@ -4184,6 +4267,15 @@ function refreshAcctUI(){
   const a=acctById(aiParsed?.sourceAccountId);
   document.getElementById("aiAcctTxt").value=a?a.name:"";
 }
+function renderAccountHint(){
+  const el=document.getElementById("aiAccountHint"); if(!el) return;
+  const p=aiParsed||{};
+  el.hidden=!p.accountWarning;
+  el.removeAttribute("data-tone");
+  if(!p.accountWarning) return;
+  el.textContent=p.accountWarning;
+  if(p.accountSource==="text") el.setAttribute("data-tone","ok");
+}
 function refreshDstUI(){
   const a=acctById(aiParsed?.destinationAccountId);
   document.getElementById("aiDstTxt").value=a?a.name:"";
@@ -4251,6 +4343,7 @@ function renderConfirm(){
   }
   refreshCatUI();
   refreshAcctUI();
+  renderAccountHint();
   refreshTagUI();
   /* 时间/备注/金额（仅首次填充，用户输入不覆盖） */
   const d=new Date((aiParsed.time||Math.floor(Date.now()/1000))*1000);
@@ -4442,7 +4535,7 @@ document.getElementById("pkRight").addEventListener("click",e=>{
   }
   if(pickMode==="cat") aiParsed.categoryId=id;
   else if(pickMode==="dst") aiParsed.destinationAccountId=id;
-  else aiParsed.sourceAccountId=id;
+  else { aiParsed.sourceAccountId=id; aiParsed.accountNeedsConfirm=false; aiParsed.accountWarning=""; aiParsed.accountSource="manual"; }
   /* 预算弹窗借用了这个选择器：它只关心「选了哪个分类」，且不消费 aiParsed。
      钩子必须在 closePicker() 之前取走结果 —— 关窗后 pickMode 就成 null 了。 */
   if(pickMode==="cat"&&typeof budPickHook==="function"){
@@ -4452,7 +4545,7 @@ document.getElementById("pkRight").addEventListener("click",e=>{
     hook(id);
     return;
   }
-  refreshCatUI(); refreshAcctUI(); refreshDstUI();
+  refreshCatUI(); refreshAcctUI(); refreshDstUI(); renderAccountHint();
   closePicker();
 });
 /* 新建标签输入：回车创建、Esc 取消、失焦时若非空则创建 */
@@ -4478,11 +4571,15 @@ async function aiRecognize(){
   const text=g("aiText").value.trim();
   const err=g("addErr"), hint=g("aiHint"), btn=g("aiBtn");
   const showErr=m=>{ err.hidden=false; err.textContent=m; };
+  if(btn.disabled) return;
   if(!text) return showErr("先写下一句话，比如「昨天午饭花了35元」");
   err.hidden=true; btn.disabled=true; btn.textContent="识别中…";
   hint.textContent="AI 正在解析（大模型响应通常需要 5~20 秒），请稍候…";
+  const controller=new AbortController();
+  let timedOut=false;
+  const timeoutId=setTimeout(()=>{ timedOut=true; controller.abort(); },45000);
   try{
-    const r=await apiFetch("api.php?action=ai_recognize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text})});
+    const r=await apiFetch("api.php?action=ai_recognize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text}),signal:controller.signal});
     const j=await r.json();
     if(j.requireLogin){ setView(false); throw new Error("登录已失效，请重新登录"); }
     if(!j.success) throw new Error(j.error||"识别失败");
@@ -4497,11 +4594,16 @@ async function aiRecognize(){
     renderConfirm();
     hint.textContent="识别完成，核对无误后保存（所有字段可修改）";
   }catch(e){
-    showErr(e.message||"识别失败");
-    hint.textContent="识别失败，可直接手动填写下方内容保存，或修改文字重试";
+    if(timedOut){
+      showErr("AI 识别超时，请检查模型服务后重试");
+      hint.textContent="识别超时，可重试或直接手动填写";
+    }else{
+      showErr(e.message||"识别失败");
+      hint.textContent="识别失败，可直接手动填写下方内容保存，或修改文字重试";
+    }
     /* 确认卡已常驻，不重置用户已填内容 */
   }
-  finally{ btn.disabled=false; btn.textContent="识别"; }
+  finally{ clearTimeout(timeoutId); btn.disabled=false; btn.textContent="识别"; }
 }
 /* 关弹层 = 完全复位：loading 只属于「这一次操作」，不能跟着下次打开复活
    （deleteTx 成功路径只调这里、从不清 loading，曾导致删完一笔再打开另一笔一直显示「删除中…」） */
@@ -4516,9 +4618,9 @@ async function submitTx(){
   const showErr=m=>{ err.hidden=false; err.textContent=m; };
   if(!(amt>0)) return showErr("金额需大于 0");
   const isEdit=addMode==="edit";
+  if(aiParsed.accountNeedsConfirm) return showErr("请先点击账户栏，选择正确的账户");
   if(!aiParsed.categoryId||String(aiParsed.categoryId)==="0") return showErr("请选择分类");
   err.hidden=true;
-  sheetLoading(true, isEdit?"保存中…":"保存中…");
   /* 编辑跨币种转账时按原交易汇率同步目标金额；只改备注/分类不会破坏原来的换算关系。 */
   let destinationAmount=0;
   if(+aiParsed.type===4){
@@ -4539,6 +4641,38 @@ async function submitTx(){
   /* 带上原时间：编辑可能**跨月**（用户改了时间），服务端要据此把旧月份的聚合缓存一并失效，
      不然旧月份会留着一笔已经不存在的账（F5 后表现为「这笔账同时出现在两个月份」）。 */
   if(isEdit&&editTx.time) body.oldTime=editTx.time;
+  /* ezBookKeeping 对「只修改分类」的 transactions/modify.json 请求可能返回
+     nothing will be updated。此时改用单笔批量分类接口；金额、备注、账户或时间
+     同时变化时仍走完整交易修改接口。 */
+  let editAction=isEdit?"edit_tx":"add_tx";
+  if(isEdit){
+    /* 编辑表单可能原样提交。提前比较完整交易字段，避免上游返回
+       "nothing will be updated"，并给用户一个明确提示。 */
+    const oldCat=String(editTx.categoryId||catIdFromTx(editTx)||"");
+    const newCat=String(body.categoryId||"");
+    const tags=(v=>(v||[]).map(String).sort().join(","));
+    const unchanged=+editTx.type===+body.type
+      && Math.abs((+editTx.amount||0)-amt)<0.005
+      && Math.abs((+editTx.destinationAmount||0)-(+body.destinationAmount||0))<0.005
+      && String(editTx.categoryId||catIdFromTx(editTx)||"")===newCat
+      && String(editTx.sourceAccountId||"")===String(body.sourceAccountId||"")
+      && String(editTx.destinationAccountId||"0")===String(body.destinationAccountId||"0")
+      && Math.floor(+editTx.time||0)===Math.floor(+body.time||0)
+      && String(editTx.comment||"").trim()===String(body.comment||"").trim()
+      && tags(editTx.tagIds)===tags(body.tagIds);
+    if(unchanged) return showErr("没有修改任何内容");
+    const onlyCategory=oldCat!==""&&newCat!==""&&oldCat!==newCat
+      && +editTx.type===+body.type
+      && Math.abs((+editTx.amount||0)-amt)<0.005
+      && Math.abs((+editTx.destinationAmount||0)-(+body.destinationAmount||0))<0.005
+      && String(editTx.sourceAccountId||"")===String(body.sourceAccountId||"")
+      && String(editTx.destinationAccountId||"0")===String(body.destinationAccountId||"0")
+      && Math.floor(+editTx.time||0)===Math.floor(+body.time||0)
+      && String(editTx.comment||"").trim()===String(body.comment||"").trim()
+      && tags(editTx.tagIds)===tags(body.tagIds);
+    if(onlyCategory) editAction="edit_tx_category";
+  }
+  sheetLoading(true, "保存中…");
   /* 乐观更新：本地立即生效（失败回滚） */
   const cache=state.calCache[state.calYM];
   if(!isEdit&&cache){
@@ -4566,7 +4700,7 @@ async function submitTx(){
   }
   renderTxByDay(); renderHomeKPI(); renderCalendar();
   try{
-    const r=await apiFetch(`api.php?action=${isEdit?"edit_tx":"add_tx"}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    const r=await apiFetch(`api.php?action=${editAction}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     const j=await r.json();
     if(j.requireLogin){ setView(false); throw new Error("登录已失效，请重新登录"); }
     if(!j.success) throw new Error(j.error||"保存失败");

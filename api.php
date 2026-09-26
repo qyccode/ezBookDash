@@ -689,10 +689,13 @@ function mapTransactionRows(array $items, array $catMap, float $div, string $def
         // 转账 pill 颜色跟随「账户互转」分类自身的颜色（与二级分类色点一致），缺省回退品牌蓝
         $trColor = '#' . ltrim((string)($cat['color'] ?? ''), '#') ?: '#3f66f8';
         $top = match ($type) {
-            2, 3 => catTopLevel($catMap, $cid),                                  // 收支：沿分类树上溯大类
-            4 => ['name' => '转账', 'color' => $trColor],                        // 转账：固定「转账」标签
+            2, 3, 4 => catTopLevel($catMap, $cid),                               // 收支/转账：沿分类树上溯大类
             default => [],                                                       // 余额调整：无标签
         };
+        if ($type === 4 && !$top) {
+            // 兼容旧数据或没有分类的转账，才回退到通用「转账」标签。
+            $top = ['name' => '转账', 'color' => $trColor];
+        }
         $out[] = [
             'id'          => (string)($tr['id'] ?? ''),
             'type'        => $type, // 1余额调整 2收入 3支出 4转账
@@ -887,7 +890,7 @@ header('Pragma: no-cache');
 $action = $_GET['action'] ?? 'dashboard';
 $client = new EbkClient($config);
 $method = strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET'));
-$writeActions = ['login', 'logout', 'clear_cache', 'edit_tx', 'delete_tx', 'add_tx', 'tx_batch', 'llm_settings_save', 'llm_map_save', 'llm_test', 'ai_recognize', 'tag_add', 'budget_save'];
+$writeActions = ['login', 'logout', 'clear_cache', 'edit_tx', 'edit_tx_category', 'delete_tx', 'add_tx', 'tx_batch', 'llm_settings_save', 'llm_map_save', 'llm_test', 'ai_recognize', 'tag_add', 'budget_save', 'settings_import'];
 
 csrfToken();
 if ($method === 'POST') {
@@ -1078,7 +1081,8 @@ if ($action === 'cal_month') {
 
         $isCurrent = ($ym === $now->format('Y-m'));
         $ttl       = $isCurrent ? (int)($config['cache_ttl'] ?? 900) : 31536000;
-        $cacheKey  = 'cal_' . $ym . '_' . substr(md5($token), 0, 8);
+        /* v2：交易行新增按转账分类树计算的大类标签，旧缓存中的固定「转账」不能继续复用。 */
+        $cacheKey  = 'cal_v2_' . $ym . '_' . substr(md5($token), 0, 8);
         if (!$freshM) {
             $cached = cacheGet($CACHE_DIR, $cacheKey, $ttl);
             if ($cached !== null) {
@@ -1265,6 +1269,77 @@ function ebk_fix_account(string|int $id, array $valid, string $default): string
     $id = trim((string)$id);
     return (isset($valid[$id]) && $id !== '' && $id !== '0') ? $id : $default;
 }
+/** 账户文本匹配：优先从原文找真实账户名称，避免模型返回空 ID 后静默落到默认账户。 */
+function ebk_account_normalize(string $value): string
+{
+    $value = mb_strtolower(trim($value), 'UTF-8');
+    $clean = preg_replace('/[\s\p{P}\p{S}]+/u', '', $value);
+    return is_string($clean) ? $clean : $value;
+}
+function ebk_account_aliases(array $account): array
+{
+    $name = trim((string)($account['name'] ?? ''));
+    $n = ebk_account_normalize($name);
+    $aliases = $name === '' ? [] : [$name];
+    /* 常见支付账户口语。账户名称本身始终优先，别名只用于补齐「微信零钱/微信钱包」这类说法。 */
+    if ($n !== '' && ($n === '零钱' || mb_strpos($n, '微信零钱') !== false || mb_strpos($n, '微信钱包') !== false)) {
+        $aliases = array_merge($aliases, ['微信零钱', '微信钱包', '零钱']);
+    }
+    if ($n !== '' && mb_strpos($n, '支付宝') !== false) {
+        $aliases = array_merge($aliases, ['支付宝', '支付宝余额', '支付宝钱包']);
+    }
+    return array_values(array_unique(array_filter($aliases, static fn($v) => trim((string)$v) !== '')));
+}
+/** 返回按原文位置排序的账户候选；每个账户只保留自己的最长匹配。 */
+function ebk_account_hints(string $text, array $meta): array
+{
+    $haystack = ebk_account_normalize($text);
+    if ($haystack === '') {
+        return [];
+    }
+    $hits = [];
+    foreach ((array)($meta['accounts'] ?? []) as $account) {
+        if (!empty($account['hidden']) || (string)($account['id'] ?? '') === '') {
+            continue;
+        }
+        $best = null;
+        $nameNorm = ebk_account_normalize((string)($account['name'] ?? ''));
+        foreach (ebk_account_aliases($account) as $alias) {
+            $needle = ebk_account_normalize((string)$alias);
+            if (mb_strlen($needle) < 2) {
+                continue;
+            }
+            $pos = mb_strpos($haystack, $needle);
+            if ($pos === false) {
+                continue;
+            }
+            $candidate = ['id' => (string)$account['id'], 'name' => (string)($account['name'] ?? ''), 'matched' => (string)$alias, 'length' => mb_strlen($needle), 'pos' => $pos, 'exact' => $needle === $nameNorm ? 1 : 0];
+            if ($best === null || $candidate['length'] > $best['length'] || ($candidate['length'] === $best['length'] && $candidate['exact'] > $best['exact'])) {
+                $best = $candidate;
+            }
+        }
+        if ($best !== null) {
+            $hits[] = $best;
+        }
+    }
+    usort($hits, static function (array $a, array $b): int {
+        return ($a['pos'] <=> $b['pos']) ?: ($b['length'] <=> $a['length']);
+    });
+    return $hits;
+}
+function ebk_text_mentions_account(string $text): bool
+{
+    return preg_match('/微信|支付宝|零钱|钱包|银行卡|借记卡|信用卡|储蓄卡|现金|账户|工资卡|余额宝/u', $text) === 1;
+}
+function ebk_account_name(array $meta, string $id): string
+{
+    foreach ((array)($meta['accounts'] ?? []) as $account) {
+        if ((string)($account['id'] ?? '') === $id) {
+            return (string)($account['name'] ?? '');
+        }
+    }
+    return '';
+}
 /* GET meta：分类树 + 全量账户（记账表单数据源）。低频数据，缓存 1 小时。 */
 if ($action === 'meta') {
     $token = (string)($_SESSION['ebk_token'] ?? '');
@@ -1305,6 +1380,55 @@ if ($action === 'meta') {
             fail('AI 识别超时，请重试；持续超时建议更换响应更快的模型');
         }
         fail($msg);
+    }
+    exit;
+}
+
+/* POST edit_tx_category：单笔修改分类。
+   ezBookKeeping 的 transactions/modify.json 在只改变分类的请求上可能返回
+   “nothing will be updated”，而批量分类接口支持单笔 transactionIds，作为单笔
+   编辑的专用路径更可靠。 */
+if ($action === 'edit_tx_category') {
+    $token = (string)($_SESSION['ebk_token'] ?? '');
+    if ($token === '') {
+        echo json_encode(['success' => false, 'requireLogin' => true, 'error' => '未登录或会话已过期'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    $in = json_decode((string)file_get_contents('php://input'), true) ?: [];
+    $id = trim((string)($in['id'] ?? ''));
+    $catId = trim((string)($in['categoryId'] ?? ''));
+    if ($id === '') {
+        fail('缺少交易 ID');
+    }
+    if (!preg_match('/^[0-9A-Za-z\-]{1,40}$/', $id)) {
+        fail('交易 ID 不合法');
+    }
+    if ($catId === '' || $catId === '0') {
+        fail('请选择分类');
+    }
+    try {
+        $bundle = ebk_meta_bundle(['categories' => ['transaction/categories/list.json', []]], $CACHE_DIR);
+        $catMap = flattenCategories(is_array($bundle['categories'] ?? null) ? $bundle['categories'] : []);
+        if (!isset($catMap[(int)$catId])) {
+            fail('分类不存在或已被删除');
+        }
+        $client->requestPost('transactions/batch_update/category.json', [
+            'transactionIds' => [$id],
+            'categoryId' => $catId,
+        ], $token);
+        $tz = new DateTimeZone((string)$config['timezone']);
+        $yms = [];
+        foreach ([(int)($in['time'] ?? 0), (int)($in['oldTime'] ?? 0)] as $ts) {
+            if ($ts > 0) {
+                $yms[] = (new DateTime('@' . $ts))->setTimezone($tz)->format('Y-m');
+            }
+        }
+        ebk_cal_forget($CACHE_DIR, array_values(array_unique($yms)));
+        echo json_encode(['success' => true], JSON_UNESCAPED_UNICODE);
+    } catch (EbkUnauthorizedException $e) {
+        echo json_encode(['success' => false, 'requireLogin' => true, 'error' => '登录已失效，请重新登录'], JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $e) {
+        fail(ebk_friendly_error($e->getMessage()));
     }
     exit;
 }
@@ -1808,8 +1932,7 @@ const EBK_CAT_TYPE_INCOME = 1;
 const EBK_CAT_TYPE_EXPENSE = 2;
 const EBK_CAT_TYPE_TRANSFER = 3;
 
-/** 用户改过的触发词存放处（只存与基线的差异；分类结构永远以基线为准，所以这里只有 子类名 => 触发词）
- *  放在 data/ 而不是 cache/：这是用户手工调出来的数据，被「清缓存」清掉不可逆 */
+/** 旧版本用户覆盖文件路径。新版本直接更新 llm_category_map.php；保留读取能力用于一次性迁移旧设置。 */
 function llm_map_override_file(): string
 {
     return user_data_file('llm_category_map_user.php');
@@ -1832,7 +1955,7 @@ function llm_map_override(): array
 
 /**
  * 加载分类语义映射表（子类名 => [大类名, 触发词, 类型]）。
- * 先用 llm_category_map.php 的基线，再用用户覆盖文件里的触发词盖掉对应条目。
+ * 主文件是唯一写入来源；旧版本的 user 覆盖文件只在升级兼容时临时合并。
  * 文件缺失或格式异常 → 返回空数组，识别自动降级为「只有分类名」，不报错。
  */
 function llm_category_map(): array
@@ -1908,6 +2031,28 @@ function llm_match_triggers(array $map, string $subName, int $catType): array
     return count($hits) === 1 ? [$hits[0][0], 'fuzzy', $hits[0][1]] : ['', 'none', ''];
 }
 
+/** 将完整映射直接保存到主文件，主文件不能使用 guarded_write 的 exit 头。 */
+function llm_category_map_save_base(array $map): bool
+{
+    $file = data_file('llm_category_map.php');
+    ensure_dir(dirname($file));
+    $body = "<?php\n/** ezBookDash 分类语义映射表（可由设置页更新） */\nreturn "
+        . var_export($map, true) . ";\n";
+    $tmp = @tempnam(dirname($file), 'llm-map-');
+    if ($tmp === false) {
+        return false;
+    }
+    $ok = @file_put_contents($tmp, $body, LOCK_EX) !== false;
+    if ($ok) {
+        @chmod($tmp, 0600);
+        $ok = @rename($tmp, $file);
+    }
+    if (!$ok) {
+        @unlink($tmp);
+    }
+    return $ok;
+}
+
 /** 当前账本分类的精确用户触发词优先于基线映射；复合键避免收支/转账下同名分类互相覆盖。 */
 function llm_triggers_for_category(array $map, array $override, string $name, int $catType): array
 {
@@ -1952,6 +2097,8 @@ function llm_build_catalog(array $meta, array $tags = []): array
     $hit     = 0;
     $total   = 0;
     $miss    = [];
+    $configured = 0;
+    $unconfigured = [];
     foreach (ebk_category_groups($meta) as $group) {
         if (!empty($group['hidden']) || (string)($group['id'] ?? '') === '') {
             continue;
@@ -1966,6 +2113,11 @@ function llm_build_catalog(array $meta, array $tags = []): array
             }
             $sName = (string)($s['name'] ?? '');
             [$trig, ] = llm_triggers_for_category($map, $override, $sName, $gType);
+            if ($trig !== '') {
+                $configured++;
+            } else {
+                $unconfigured[] = $sName;
+            }
             /* 上游分类自带的备注也一并带上：用户可在 ezbook 界面里给个别分类补词 */
             $remark = trim((string)($s['comment'] ?? ''));
             if ($remark !== '' && mb_strpos($trig, $remark) === false) {
@@ -1982,6 +2134,11 @@ function llm_build_catalog(array $meta, array $tags = []): array
         if (!$rows) {
             /* 无子类的顶层分类：它本身就是可选分类，同样试着配触发词 */
             [$trig, ] = llm_triggers_for_category($map, $override, $gName, $gType);
+            if ($trig !== '') {
+                $configured++;
+            } else {
+                $unconfigured[] = $gName;
+            }
             $remark = trim((string)($group['comment'] ?? ''));
             if ($remark !== '' && mb_strpos($trig, $remark) === false) {
                 $trig = $trig === '' ? $remark : $trig . '；' . $remark;
@@ -2007,7 +2164,9 @@ function llm_build_catalog(array $meta, array $tags = []): array
         if (!empty($a['hidden'])) {
             continue;
         }
-        $accts[] = (string)($a['id'] ?? '') . ' ' . (string)($a['name'] ?? '');
+        $kind = [1 => '现金', 2 => '借记卡', 3 => '信用卡', 4 => '虚拟账户', 5 => '负债', 6 => '应收款项', 7 => '投资账户', 8 => '储蓄账户', 9 => '其他'][(int)($a['category'] ?? 0)] ?? '';
+        $suffix = $kind !== '' ? '（' . $kind . '）' : '';
+        $accts[] = (string)($a['id'] ?? '') . ' ' . (string)($a['name'] ?? '') . $suffix;
     }
     $tagRows = [];
     foreach ($tags as $t) {
@@ -2020,6 +2179,8 @@ function llm_build_catalog(array $meta, array $tags = []): array
         'total'   => $total,                 // 当前可用子类数
         'hit'     => $hit,                   // 其中拿到触发词的
         'miss'    => $miss,                  // 没配上的子类名（供排查）
+        'configured' => $configured,         // 仅分类映射中的触发词，不含上游分类备注
+        'unconfigured' => $unconfigured,
         'mapSize' => count($map),            // 映射表条目数
     ];
     return [$expense, $income, $transfer, $accts, $tagRows, $stats];
@@ -2079,8 +2240,8 @@ function llm_user_cat_names(array $meta): array
 function llm_map_items(?array $meta): array
 {
     $map      = llm_category_map();
-    $base     = llm_category_map_base();
-    $override = llm_map_override();
+    /* 保存后主文件就是当前值；旧 user 覆盖已在 llm_category_map() 中兼容合并。 */
+    $base     = $map;
     $actual   = [];
     $used     = [];
     if ($meta !== null) {
@@ -2111,7 +2272,7 @@ function llm_map_items(?array $meta): array
     foreach ($map as $sub => $v) {
         $type = (int)($v[2] ?? 0);
         $key = $type . '|' . preg_replace('/\s+/u', '', (string)$sub);
-        $trig = isset($override[$key]) ? (string)$override[$key] : (string)($v[1] ?? '');
+        $trig = (string)($v[1] ?? '');
         $items[] = [
             'key'     => $key,
             'sub'     => (string)$sub,
@@ -2119,7 +2280,7 @@ function llm_map_items(?array $meta): array
             'type'    => $type,
             'trig'    => $trig,
             'base'    => (string)($base[$sub][1] ?? ''),
-            'custom'  => isset($override[$key]) || isset($override[$sub]),
+            'custom'  => false,
             'matched' => $meta === null ? null : (isset($actual[$key]) || isset($used[$key])),
         ];
     }
@@ -2132,11 +2293,11 @@ function llm_map_items(?array $meta): array
         if (isset($known[$key])) {
             continue;
         }
-        [$trig, ] = llm_triggers_for_category($map, $override, (string)$row['sub'], (int)$row['type']);
+        [$trig, ] = llm_triggers_for_category($map, [], (string)$row['sub'], (int)$row['type']);
         $items[] = $row + [
             'trig'    => $trig,
             'base'    => '',
-            'custom'  => isset($override[$key]),
+            'custom'  => false,
             'matched' => true,
         ];
     }
@@ -2153,8 +2314,11 @@ function llm_map_stats(array $meta, array $tags = []): array
         'hit'     => (int)$s['hit'],
         'miss'    => array_slice(array_values((array)$s['miss']), 0, 4),   // 只列前几个，其余用 missN 带过，免得把设置窗口撑长
         'missN'   => count((array)$s['miss']),
+        'configured' => (int)($s['configured'] ?? 0),
+        'unconfigured' => array_slice(array_values((array)($s['unconfigured'] ?? [])), 0, 4),
+        'unconfiguredN' => count((array)($s['unconfigured'] ?? [])),
         'mapSize' => (int)$s['mapSize'],
-        'custom'  => count(llm_map_override()),                            // 用户在映射窗口里改过的条数
+        'custom'  => 0,                                                     // 保留字段以兼容旧前端
     ];
 }
 
@@ -2226,7 +2390,7 @@ function llm_recognize_custom(array $cfg, string $text, array $meta, string $tz,
          . $block('可用支出分类（格式：id 大类/子类 = 触发词）', $expense)
          . $block('可用收入分类（格式：id 大类/子类 = 触发词）', $income)
          . $block('可用转账分类（格式：id 大类/子类 = 触发词）', $transfer)
-         . $block('可用账户（格式：id 名称）', $accts)
+         . $block('可用账户（格式：id 名称（账户类型））', $accts)
          . $block('可用标签（格式：id 名称，可多选）', $tagRows)
          . "输出字段：type（3=支出，2=收入，4=转账）、amount（数字，单位元）、"
          . "categoryId（必须是对应交易类型分类清单里的 id，转账也必须选择转账分类）、"
@@ -2653,7 +2817,7 @@ if ($action === 'llm_map_get') {
     exit;
 }
 
-/* POST llm_map_save：保存触发词改动。只落「与基线不同」的差异；改回基线/清空 = 撤销该条改动 */
+/* POST llm_map_save：把完整分类映射直接保存到 data/llm_category_map.php */
 if ($action === 'llm_map_save') {
     $token = (string)($_SESSION['ebk_token'] ?? '');
     if ($token === '') {
@@ -2674,8 +2838,9 @@ if ($action === 'llm_map_save') {
     if (!$allowed) {
         fail('没有可编辑的分类，请先在 EZBookKeeping 中创建分类');
     }
-    $before   = llm_map_override();
-    $override = $before;
+    $beforeMap = llm_category_map();
+    $beforeOverride = llm_map_override();
+    $nextMap  = $beforeMap;
     $changed  = 0;
     $reverted = 0;
     $ignored  = 0;
@@ -2699,40 +2864,59 @@ if ($action === 'llm_map_save') {
             continue;
         }
         $item = $allowed[$key];
-        $sub = (string)($item['sub'] ?? $key);
+        $sub = trim((string)($item['sub'] ?? $key));
         /* 触发词会原样拼进 prompt 的 `id 大类/子类 = 触发词` 行，所以把换行/连续空白压成单个空格，防止把行拆散 */
         $trig = (string)($row['trig'] ?? '');
         $trig = trim((string)preg_replace('/\s+/u', ' ', $trig));
         if (mb_strlen($trig) > LLM_TRIGGER_MAX) {
             fail('「' . $sub . '」的触发词过长（' . LLM_TRIGGER_MAX . ' 字以内）');
         }
-        $baseTrig = trim((string)($item['base'] ?? ''));
-        /* 旧版本用分类名作键；保存一次后迁移为「类型|分类名」，同名分类互不干扰。 */
-        if (isset($override[$sub])) {
-            unset($override[$sub]);
-        }
-        if ($trig === '' || $trig === $baseTrig) {   // 清空或改回基线 → 撤掉覆盖，回到内置值
-            if (isset($override[$key])) {
-                unset($override[$key]);
-                $reverted++;
+        $type = (int)($item['type'] ?? 0);
+        $mapKey = '';
+        foreach ($nextMap as $candidate => $value) {
+            if (preg_replace('/\s+/u', '', (string)$candidate) === preg_replace('/\s+/u', '', $sub)
+                && (int)($value[2] ?? 0) === $type) {
+                $mapKey = (string)$candidate;
+                break;
             }
-            continue;
         }
-        if (($override[$key] ?? null) !== $trig) {
-            $override[$key] = $trig;
+        if ($mapKey === '') {
+            $mapKey = $sub;
+            $nextMap[$mapKey] = [(string)($item['group'] ?? ''), '', $type];
+        }
+        $oldTrig = (string)($nextMap[$mapKey][1] ?? '');
+        if ($oldTrig !== $trig) {
+            $nextMap[$mapKey][1] = $trig;
             $changed++;
         }
     }
-    if ($override !== $before && !guarded_write(llm_map_override_file(), $override)) {
-        fail('写入失败：data 目录不可写');
+    if ($nextMap !== $beforeMap || $beforeOverride !== []) {
+        if (!llm_category_map_save_base($nextMap)) {
+            fail('写入失败：data 目录不可写');
+        }
+        /* 清空旧版本覆盖文件，避免它在下一次请求中覆盖主映射。 */
+        if ($beforeOverride !== [] && !guarded_write(llm_map_override_file(), [])) {
+            fail('旧版分类映射清理失败，请检查私有数据目录权限');
+        }
     }
     echo json_encode(['success' => true, 'data' => [
-        'customN'  => count($override),
+        'customN'  => 0,
         'changed'  => $changed,
         'reverted' => $reverted,
         'ignored'  => $ignored,
     ]], JSON_UNESCAPED_UNICODE);
     exit;
+}
+
+/** 导出完整的分类映射，键为「类型|分类名」，值为触发词。 */
+function llm_map_export(): array
+{
+    $out = [];
+    foreach (llm_category_map() as $sub => $value) {
+        $type = (int)($value[2] ?? 0);
+        $out[$type . '|' . (string)$sub] = (string)($value[1] ?? '');
+    }
+    return $out;
 }
 
 /* POST llm_test：用提交上来的（或已保存的）配置做一次极小请求，验证地址/Key/模型 */
@@ -2831,15 +3015,44 @@ if ($action === 'ai_recognize') {
             }
         }
 
-        /* 防幻觉：账户 ID 必须有效（否则上游 add 会报 source account not found） */
-        if ($defAcct !== '') {
-            $result['sourceAccountId']      = ebk_fix_account((string)($result['sourceAccountId'] ?? ''), $validAcct, $defAcct);
-            $result['destinationAccountId'] = ebk_fix_account((string)($result['destinationAccountId'] ?? ''), $validAcct, $defAcct);
-        }
         /* 防幻觉：分类必须属于该类型（上游与自定义两条路径统一收口） */
         $rType = (int)($result['type'] ?? 3);
         if (!in_array($rType, [2, 3, 4], true)) {
             $rType = 3;
+        }
+        /* 账户先按用户原文做确定匹配，再接受模型结果。最长账户名优先，
+           例如同时存在「微信」和「微信零钱」时，后者会优先命中。转账按原文出现顺序取前两个。 */
+        $accountHints = ebk_account_hints($text, $metaRaw);
+        $accountSource = 'ai';
+        $accountMatched = '';
+        if ($accountHints) {
+            $result['sourceAccountId'] = $accountHints[0]['id'];
+            $accountMatched = $accountHints[0]['matched'];
+            $accountSource = 'text';
+            if ($rType === 4 && isset($accountHints[1])) {
+                $result['destinationAccountId'] = $accountHints[1]['id'];
+            }
+        }
+        /* 防幻觉：账户 ID 必须有效（否则上游 add 会报 source account not found）。 */
+        if ($defAcct !== '') {
+            $rawSource = (string)($result['sourceAccountId'] ?? '');
+            $rawDest   = (string)($result['destinationAccountId'] ?? '');
+            $result['sourceAccountId'] = ebk_fix_account($rawSource, $validAcct, $defAcct);
+            $result['destinationAccountId'] = ebk_fix_account($rawDest, $validAcct, $defAcct);
+            if (!$accountHints && ($rawSource === '' || !isset($validAcct[$rawSource]) || $rawSource === '0')) {
+                $accountSource = 'default';
+            }
+        }
+        $accountWarning = '';
+        $accountNeedsConfirm = false;
+        if ($accountSource === 'default') {
+            $defaultName = ebk_account_name($metaRaw, $defAcct);
+            if (ebk_text_mentions_account($text)) {
+                $accountWarning = '文字中提到的账户未匹配到现有账户，请手动选择账户';
+                $accountNeedsConfirm = true;
+            } else {
+                $accountWarning = '未指定账户，当前使用默认账户' . ($defaultName !== '' ? '：' . $defaultName : '');
+            }
         }
         $result['type']       = $rType;
         $result['categoryId'] = ebk_fix_category((string)($result['categoryId'] ?? ''), $rType, $metaRaw);
@@ -2847,6 +3060,10 @@ if ($action === 'ai_recognize') {
             $result['destinationAccountId'] = '0';
         }
         $result['sourceAmount'] = (int)($result['sourceAmount'] ?? 0);
+        $result['accountSource'] = $accountSource;
+        $result['accountMatched'] = $accountMatched;
+        $result['accountNeedsConfirm'] = $accountNeedsConfirm;
+        $result['accountWarning'] = $accountWarning;
         echo json_encode(['success' => true, 'data' => $result, 'via' => $via], JSON_UNESCAPED_UNICODE);
     } catch (EbkUnauthorizedException $e) {
         echo json_encode(['success' => false, 'requireLogin' => true, 'error' => '登录已失效，请重新登录'], JSON_UNESCAPED_UNICODE);
@@ -2973,8 +3190,10 @@ if ($action === 'budget_get') {
     if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $ym) || $ym > $now->format('Y-m')) {
         fail('预算月份不合法');
     }
-    $dash = cacheGetRaw($CACHE_DIR, 'dash_month_' . $tkHash);
-    $cal  = cacheGetRaw($CACHE_DIR, 'cal_' . $ym . '_' . $tkHash);
+    /* 与 dashboard/cal_month 当前 v2 缓存键保持一致；旧键会导致 progressOk 永远为 false，
+       首页预算卡长期停在“正在等待本月账单数据”。 */
+    $dash = cacheGetRaw($CACHE_DIR, 'dash_v2_month_' . $tkHash);
+    $cal  = cacheGetRaw($CACHE_DIR, 'cal_v2_' . $ym . '_' . $tkHash);
     $catRank = [];
     $dataYM  = '';
     if ($ym === $now->format('Y-m') && is_array($dash) && isset($dash['d']['data']['categoryRank']['expense'])) {
@@ -3170,6 +3389,205 @@ if ($action === 'budget_save') {
     exit;
 }
 
+/* GET settings_export：导出可迁移的非敏感设置。
+   登录凭据、Session、API Token、AI API Key、缓存和交易数据永不进入导出包。 */
+if ($action === 'settings_export') {
+    $token = (string)($_SESSION['ebk_token'] ?? '');
+    if ($token === '') {
+        echo json_encode(['success' => false, 'requireLogin' => true, 'error' => '未登录或会话已过期'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    $ai = llm_config_get();
+    $budget = budget_read();
+    echo json_encode(['success' => true, 'data' => [
+        'format' => 'ezbookdash-settings',
+        'version' => 1,
+        'appVersion' => '1.0.0',
+        'exportedAt' => date(DATE_ATOM),
+        'ai' => [
+            'mode' => (string)($ai['mode'] ?? 'upstream'),
+            'base_url' => (string)($ai['base_url'] ?? ''),
+            'model' => (string)($ai['model'] ?? ''),
+        ],
+        'categoryMapping' => llm_map_export(),
+        'budget' => [
+            'monthly' => is_array($budget['monthly'] ?? null) ? $budget['monthly'] : [],
+            'alerts' => is_array($budget['alerts'] ?? null) ? $budget['alerts'] : ['warn' => 80, 'danger' => 100],
+        ],
+    ]], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+/* POST settings_import：导入非敏感设置包。AI API Key 保留目标设备已有值。 */
+if ($action === 'settings_import') {
+    $token = (string)($_SESSION['ebk_token'] ?? '');
+    if ($token === '') {
+        echo json_encode(['success' => false, 'requireLogin' => true, 'error' => '未登录或会话已过期'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    $in = json_decode((string)file_get_contents('php://input'), true);
+    if (!is_array($in) || ($in['format'] ?? '') !== 'ezbookdash-settings' || (int)($in['version'] ?? 0) !== 1) {
+        fail('不是有效的 ezBookDash 设置备份文件');
+    }
+    $hasAi = array_key_exists('ai', $in);
+    $hasMap = array_key_exists('categoryMapping', $in);
+    $hasBudget = array_key_exists('budget', $in);
+    if (!$hasAi && !$hasMap && !$hasBudget) {
+        fail('设置备份中没有可导入的内容');
+    }
+
+    $aiIncoming = null;
+    if ($hasAi) {
+        if (!is_array($in['ai'])) {
+            fail('AI 配置格式不正确');
+        }
+        $mode = (string)($in['ai']['mode'] ?? 'upstream');
+        $base = trim((string)($in['ai']['base_url'] ?? ''));
+        $model = trim((string)($in['ai']['model'] ?? ''));
+        if (!in_array($mode, ['upstream', 'custom'], true)) {
+            fail('AI 识别方式不合法');
+        }
+        if (mb_strlen($base) > 500 || mb_strlen($model) > 120) {
+            fail('AI 配置内容过长');
+        }
+        $aiIncoming = ['mode' => $mode, 'base_url' => $base, 'model' => $model];
+    }
+
+    $mapIncoming = null;
+    if ($hasMap) {
+        if (!is_array($in['categoryMapping']) || count($in['categoryMapping']) > 500) {
+            fail('分类映射格式不正确或条目过多');
+        }
+        $mapIncoming = [];
+        foreach ($in['categoryMapping'] as $key => $value) {
+            $key = trim((string)$key);
+            $value = trim((string)$value);
+            if ($key === '') {
+                continue;
+            }
+            if (!preg_match('/^[123]\|.{1,160}$/u', $key)) {
+                continue;
+            }
+            if (mb_strlen($value) > LLM_TRIGGER_MAX) {
+                fail('分类映射触发词过长');
+            }
+            $mapIncoming[$key] = (string)preg_replace('/\s+/u', ' ', $value);
+        }
+    }
+
+    $budgetIncoming = null;
+    if ($hasBudget) {
+        if (!is_array($in['budget'])) {
+            fail('预算配置格式不正确');
+        }
+        $monthlyIn = $in['budget']['monthly'] ?? [];
+        if (!is_array($monthlyIn) || count($monthlyIn) > 60) {
+            fail('预算条目格式不正确或过多');
+        }
+        $monthly = [];
+        foreach ($monthlyIn as $name => $value) {
+            $name = trim((string)$name);
+            if ($name === '') {
+                continue;
+            }
+            if (mb_strlen($name) > 30 || !is_numeric($value)) {
+                fail('预算条目格式不正确：' . $name);
+            }
+            $amount = round((float)$value, 2);
+            if ($amount <= 0 || $amount > 99999999) {
+                fail('预算金额不合法：' . $name);
+            }
+            $monthly[$name] = $amount;
+        }
+        $alertsIn = $in['budget']['alerts'] ?? ['warn' => 80, 'danger' => 100];
+        if (!is_array($alertsIn)) {
+            fail('预算预警配置格式不正确');
+        }
+        $alerts = ['warn' => 80, 'danger' => 100];
+        foreach (['warn', 'danger'] as $level) {
+            if (array_key_exists($level, $alertsIn)) {
+                if (!is_numeric($alertsIn[$level]) || (float)$alertsIn[$level] < 0 || (float)$alertsIn[$level] > 100) {
+                    fail('预算预警阈值不合法');
+                }
+                $alerts[$level] = round((float)$alertsIn[$level], 1);
+            }
+        }
+        $budgetIncoming = ['version' => 1, 'updatedAt' => time(), 'monthly' => $monthly, 'alerts' => $alerts];
+    }
+
+    /* 所有内容先校验，再写入；失败时恢复三份原始配置，避免半导入状态。 */
+    $beforeAi = llm_config_get();
+    $beforeMap = llm_category_map();
+    $beforeBase = llm_category_map_base();
+    $beforeOverride = llm_map_override();
+    $beforeBudget = budget_read();
+    $written = [];
+    try {
+        if ($aiIncoming !== null) {
+            $nextAi = array_merge(llm_config_defaults(), $beforeAi, $aiIncoming);
+            if (!llm_config_save($nextAi)) {
+                throw new RuntimeException('AI 配置写入失败，请检查私有数据目录权限');
+            }
+            $written[] = 'ai';
+        }
+        if ($mapIncoming !== null) {
+            $nextMap = $beforeMap;
+            $applied = 0;
+            foreach ($mapIncoming as $mapKey => $trigger) {
+                if (!preg_match('/^([123])\\|(.*)$/u', (string)$mapKey, $mm)) {
+                    continue;
+                }
+                $type = (int)$mm[1];
+                $sub = (string)$mm[2];
+                $found = '';
+                foreach ($nextMap as $candidate => $entry) {
+                    if (preg_replace('/\\s+/u', '', (string)$candidate) === preg_replace('/\\s+/u', '', $sub)
+                        && (int)($entry[2] ?? 0) === $type) {
+                        $found = (string)$candidate;
+                        break;
+                    }
+                }
+                if ($found === '') {
+                    continue;
+                }
+                if ((string)($nextMap[$found][1] ?? '') !== (string)$trigger) {
+                    $nextMap[$found][1] = (string)$trigger;
+                }
+                $applied++;
+            }
+            if (!llm_category_map_save_base($nextMap)) {
+                throw new RuntimeException('分类映射写入失败，请检查私有数据目录权限');
+            }
+            if ($beforeOverride !== [] && !guarded_write(llm_map_override_file(), [])) {
+                throw new RuntimeException('旧版分类映射清理失败，请检查私有数据目录权限');
+            }
+            $mapApplied = $applied;
+            $written[] = 'mapping';
+        }
+        if ($budgetIncoming !== null) {
+            if (!guarded_write(budget_file(), $budgetIncoming)) {
+                throw new RuntimeException('预算写入失败，请检查私有数据目录权限');
+            }
+            $written[] = 'budget';
+        }
+    } catch (Throwable $e) {
+        if (in_array('ai', $written, true)) { @llm_config_save($beforeAi); }
+        if (in_array('mapping', $written, true)) {
+            @llm_category_map_save_base($beforeBase);
+            @guarded_write(llm_map_override_file(), $beforeOverride);
+        }
+        if (in_array('budget', $written, true)) { @guarded_write(budget_file(), $beforeBudget); }
+        fail($e->getMessage());
+    }
+    echo json_encode(['success' => true, 'data' => [
+        'ai' => $aiIncoming !== null,
+        'mapping' => $mapIncoming === null ? null : (int)($mapApplied ?? 0),
+        'budget' => $budgetIncoming === null ? null : count($budgetIncoming['monthly']),
+        'keyPreserved' => true,
+    ]], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 if ($action !== 'dashboard') {
     fail('未知 action');
 }
@@ -3200,7 +3618,8 @@ if ($token === '') {
 }
 
 // 缓存按登录 token 隔离，避免不同账号命中同一份缓存；自定义区间把 from/to 编入 key
-$cacheKey = 'dash_' . ($isCustom ? "custom_{$from}_{$to}" : $range) . '_' . substr(md5($token), 0, 8);
+/* v2：交易行新增按转账分类树计算的大类标签，旧 dashboard 快照需要自然失效。 */
+$cacheKey = 'dash_v2_' . ($isCustom ? "custom_{$from}_{$to}" : $range) . '_' . substr(md5($token), 0, 8);
 
 // ---- 缓存策略（stale-while-revalidate：秒开 + 后台静默刷新）----
 //   新鲜期 cache_ttl（默认 15 分钟）→ 直接返回缓存；
